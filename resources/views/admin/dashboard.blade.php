@@ -148,7 +148,7 @@
             </div>
             <div class="p-6">
                 @if($topWebsites->count() > 0)
-                    <div class="space-y-4">
+                    <div class="space-y-4 top-websites-container">
                         @foreach($topWebsites as $index => $website)
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center flex-1 min-w-0">
@@ -191,7 +191,14 @@
             </div>
         </div>
     </div>
-
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Monthly Visits per Website</h3>
+        </div>
+        <div class="p-6">
+            <div id="traffic-chart" style="height: 350px;"></div>
+        </div>
+    </div>
     <!-- Quick Actions -->
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -229,32 +236,54 @@
 </div>
 
 @push('scripts')
+<script src="https://code.highcharts.com/highcharts.js"></script>
 <script>
+    let lastLogCount = {{ $totalLogs }};
+    let pollingInterval;
+
     document.addEventListener('DOMContentLoaded', function() {
-        if (typeof Echo !== 'undefined') {
-            // Listen to visitor tracked events
-            Echo.private('admin.dashboard')
-                .listen('.visitor.tracked', (e) => {
-                    console.log('New visitor tracked:', e);
+        // Start polling every 60 seconds
+        startPolling();
+    });
+
+    function startPolling() {
+        // Poll immediately on load
+        fetchDashboardStats();
+
+        // Then poll every 60 seconds
+        pollingInterval = setInterval(fetchDashboardStats, 60000);
+    }
+
+    function fetchDashboardStats() {
+        axios.get('{{ route("api.dashboard.stats") }}')
+            .then(function(response) {
+                if (response.data.success) {
+                    const data = response.data.data;
 
                     // Update stats
-                    if (e.stats) {
-                        updateStatCard('total-websites', e.stats.total_websites);
-                        updateStatCard('total-visits', e.stats.total_visits);
-                        updateStatCard('total-logs', e.stats.total_logs);
-                        updateStatCard('today-visits', e.stats.today_visits);
+                    updateStatCard('total-websites', data.stats.total_websites);
+                    updateStatCard('total-visits', data.stats.total_visits);
+                    updateStatCard('total-logs', data.stats.total_logs);
+                    updateStatCard('today-visits', data.stats.today_visits);
+
+                    // Check if there are new logs
+                    if (data.stats.total_logs > lastLogCount) {
+                        const newLogsCount = data.stats.total_logs - lastLogCount;
+                        if (newLogsCount > 0) {
+                            updateRecentLogs(data.recent_logs);
+                            showNotification(`New ${newLogsCount} visitor(s) tracked`);
+                        }
+                        lastLogCount = data.stats.total_logs;
                     }
 
-                    // Add new visitor log to recent logs
-                    if (e.visitor_log) {
-                        addRecentLog(e.visitor_log);
-                    }
-
-                    // Show notification
-                    showNotification('New visitor tracked on ' + e.visitor_log.website.name);
-                });
-        }
-    });
+                    // Update top websites
+                    updateTopWebsites(data.top_websites);
+                }
+            })
+            .catch(function(error) {
+                console.error('Error fetching dashboard stats:', error);
+            });
+    }
 
     function updateStatCard(id, value) {
         const element = document.getElementById(id);
@@ -262,13 +291,16 @@
             const currentValue = parseInt(element.textContent.replace(/,/g, '')) || 0;
             const newValue = parseInt(value) || 0;
 
-            // Animate number change
-            animateValue(element, currentValue, newValue, 500);
+            if (currentValue !== newValue) {
+                animateValue(element, currentValue, newValue, 500);
+            }
         }
     }
 
     function animateValue(element, start, end, duration) {
         const range = end - start;
+        if (range === 0) return;
+
         const increment = range / (duration / 16);
         let current = start;
 
@@ -282,61 +314,161 @@
         }, 16);
     }
 
-    function addRecentLog(log) {
+    function updateRecentLogs(logs) {
         const container = document.querySelector('.recent-logs-container');
         if (!container) return;
 
-        const logElement = document.createElement('div');
-        logElement.className = 'flex items-start animate-pulse';
-        logElement.innerHTML = `
-            <div class="flex-shrink-0">
-                <div class="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/20 flex items-center justify-center">
-                    <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                    </svg>
+        // Clear existing logs
+        container.innerHTML = '';
+
+        // Add new logs
+        logs.forEach((log, index) => {
+            const logElement = document.createElement('div');
+            logElement.className = index === 0 ? 'flex items-start animate-pulse' : 'flex items-start';
+            logElement.innerHTML = `
+                <div class="flex-shrink-0">
+                    <div class="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/20 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                        </svg>
+                    </div>
                 </div>
-            </div>
-            <div class="ml-4 flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                    <a href="/app/private/website/${log.website_id}" class="hover:text-indigo-600 dark:hover:text-indigo-400">
-                        ${log.website.name}
-                    </a>
-                </p>
-                <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
-                    ${log.ip_address} • Just now
-                </p>
-            </div>
-        `;
+                <div class="ml-4 flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                        <a href="/app/private/website/${log.website_id}" class="hover:text-indigo-600 dark:hover:text-indigo-400">
+                            ${log.website.name}
+                        </a>
+                    </p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        ${log.ip_address} • ${log.visited_at_human}
+                    </p>
+                </div>
+            `;
 
-        // Remove animation class after a moment
-        setTimeout(() => {
-            logElement.classList.remove('animate-pulse');
-        }, 1000);
+            if (index === 0) {
+                setTimeout(() => {
+                    logElement.classList.remove('animate-pulse');
+                }, 1000);
+            }
 
-        // Insert at the top
-        container.insertBefore(logElement, container.firstChild);
-
-        // Remove last item if more than 10
-        const logs = container.querySelectorAll('div.flex.items-start');
-        if (logs.length > 10) {
-            logs[logs.length - 1].remove();
-        }
+            container.appendChild(logElement);
+        });
     }
 
+    function updateTopWebsites(websites) {
+        const container = document.querySelector('.top-websites-container');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        websites.forEach((website, index) => {
+            const websiteElement = document.createElement('div');
+            websiteElement.className = 'flex items-center justify-between';
+            websiteElement.innerHTML = `
+                <div class="flex items-center flex-1 min-w-0">
+                    <div class="flex-shrink-0">
+                        ${index < 3 ?
+                            `<span class="flex items-center justify-center w-8 h-8 rounded-full ${index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' : (index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400')} font-semibold text-sm">
+                                ${index + 1}
+                            </span>` :
+                            `<span class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 font-semibold text-sm">
+                                ${index + 1}
+                            </span>`
+                        }
+                    </div>
+                    <div class="ml-3 flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            <a href="/app/private/website/${website.id}" class="hover:text-indigo-600 dark:hover:text-indigo-400">
+                                ${website.name}
+                            </a>
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            ${parseInt(website.total_visit).toLocaleString()} visits
+                        </p>
+                    </div>
+                </div>
+            `;
+            container.appendChild(websiteElement);
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+    loadMonthlyChart();
+});
+
+function loadMonthlyChart() {
+    axios.get('{{ route("api.dashboard.chart.permonth") }}')
+        .then(function(response) {
+            if (response.data.success) {
+
+                Highcharts.chart('traffic-chart', {
+                    chart: {
+                        type: 'column',
+                        backgroundColor: 'transparent'
+                    },
+                    title: {
+                        text: 'Monthly Visits Comparison'
+                    },
+                    xAxis: {
+                        categories: response.data.months,
+                        crosshair: true
+                    },
+                    yAxis: {
+                        min: 0,
+                        title: {
+                            text: 'Total Visits'
+                        },
+                    },
+                    tooltip: {
+                        shared: true,
+                        valueSuffix: ' visits'
+                    },
+                    plotOptions: {
+                        column: {
+                            pointPadding: 0.1,
+                            borderWidth: 0,
+                            dataLabels: {
+                                enabled: true,
+                                style: { color: '#ccc' }
+                            }
+                        }
+                    },
+                    series: response.data.series,
+                    credits: {
+                        enabled: false
+                    }
+                });
+
+            }
+        })
+        .catch(function(error) {
+            console.error('Chart load error:', error);
+        });
+}
     function showNotification(message) {
-        // Create notification element
+        // Remove existing notification if any
+        const existing = document.querySelector('.live-notification');
+        if (existing) {
+            existing.remove();
+        }
+
         const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-indigo-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
+        notification.className = 'live-notification fixed top-4 right-4 bg-indigo-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
         notification.textContent = message;
 
         document.body.appendChild(notification);
 
-        // Remove after 3 seconds
         setTimeout(() => {
             notification.classList.add('animate-slide-out');
             setTimeout(() => notification.remove(), 300);
         }, 3000);
     }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+        }
+    });
 </script>
 
 <style>

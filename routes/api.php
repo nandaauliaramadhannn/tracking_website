@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\TrackingController;
+use App\Http\Controllers\Api\DashboardApiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,3 +17,5 @@ use App\Http\Controllers\Api\TrackingController;
 */
 
 Route::post('app/public/track', [TrackingController::class, 'store'])->name('track');
+Route::get('/dashboard/chart/per-month', [DashboardApiController::class, 'chartPerMonth'])
+    ->name('api.dashboard.chart.permonth');

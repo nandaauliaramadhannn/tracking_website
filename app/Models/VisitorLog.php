@@ -17,7 +17,8 @@ class VisitorLog extends Model
         'ip_address',
         'user_agent',
         'referrer',
-        'visited_at'
+        'visited_at',
+        'current_url'
     ];
 
     public function website()

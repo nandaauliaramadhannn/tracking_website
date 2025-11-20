@@ -59,6 +59,7 @@ class TrackingController extends Controller
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->user_agent ?? $request->header('User-Agent'),
                 'referrer'   => $request->referrer ?? null,
+                'current_url'=> $request->current_url ?? null,
                 'visited_at' => now(),
             ]);
 

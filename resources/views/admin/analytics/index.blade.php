@@ -146,7 +146,7 @@
             </div>
             <div class="p-6">
                 @if($visitsByDay->count() > 0)
-                    <div class="space-y-4">
+                    <div class="space-y-4 visits-by-day-container">
                         @foreach($visitsByDay as $day)
                             <div>
                                 <div class="flex items-center justify-between mb-1">
@@ -177,7 +177,7 @@
             </div>
             <div class="p-6">
                 @if($visitsByWebsite->count() > 0)
-                    <div class="space-y-4">
+                    <div class="space-y-4 visits-by-website-container">
                         @foreach($visitsByWebsite as $website)
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center flex-1 min-w-0">
@@ -243,7 +243,7 @@
                         </th>
                     </tr>
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700 top-websites-tbody">
                     @forelse($topWebsites as $index => $website)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             <td class="px-6 py-4 whitespace-nowrap">
@@ -309,26 +309,50 @@
 
 @push('scripts')
 <script>
+    let pollingInterval;
+
     document.addEventListener('DOMContentLoaded', function() {
-        if (typeof Echo !== 'undefined') {
-            // Listen to visitor tracked events
-            Echo.private('admin.dashboard')
-                .listen('.visitor.tracked', (e) => {
-                    console.log('New visitor tracked:', e);
+        // Start polling every 60 seconds
+        startPolling();
+    });
+
+    function startPolling() {
+        // Poll immediately on load
+        fetchAnalyticsStats();
+
+        // Then poll every 60 seconds
+        pollingInterval = setInterval(fetchAnalyticsStats, 60000);
+    }
+
+    function fetchAnalyticsStats() {
+        axios.get('{{ route("api.analytics.stats") }}')
+            .then(function(response) {
+                if (response.data.success) {
+                    const data = response.data.data;
 
                     // Update stats
-                    if (e.stats) {
-                        updateStatCard('analytics-total-websites', e.stats.total_websites);
-                        updateStatCard('analytics-total-visits', e.stats.total_visits);
-                        updateStatCard('analytics-total-logs', e.stats.total_logs);
-                        updateStatCard('analytics-today-visits', e.stats.today_visits);
-                    }
+                    updateStatCard('analytics-total-websites', data.stats.total_websites);
+                    updateStatCard('analytics-total-visits', data.stats.total_visits);
+                    updateStatCard('analytics-total-logs', data.stats.total_logs);
+                    updateStatCard('analytics-today-visits', data.stats.today_visits);
+                    updateStatCard('analytics-today-websites', data.stats.today_websites);
+                    updateStatCard('analytics-week-visits', data.stats.week_visits);
+                    updateStatCard('analytics-month-visits', data.stats.month_visits);
 
-                    // Show notification
-                    showNotification('New visitor tracked on ' + e.visitor_log.website.name);
-                });
-        }
-    });
+                    // Update visits by day chart
+                    updateVisitsByDay(data.visits_by_day);
+
+                    // Update visits by website
+                    updateVisitsByWebsite(data.visits_by_website);
+
+                    // Update top websites table
+                    updateTopWebsitesTable(data.top_websites);
+                }
+            })
+            .catch(function(error) {
+                console.error('Error fetching analytics stats:', error);
+            });
+    }
 
     function updateStatCard(id, value) {
         const element = document.getElementById(id);
@@ -336,13 +360,16 @@
             const currentValue = parseInt(element.textContent.replace(/,/g, '')) || 0;
             const newValue = parseInt(value) || 0;
 
-            // Animate number change
-            animateValue(element, currentValue, newValue, 500);
+            if (currentValue !== newValue) {
+                animateValue(element, currentValue, newValue, 500);
+            }
         }
     }
 
     function animateValue(element, start, end, duration) {
         const range = end - start;
+        if (range === 0) return;
+
         const increment = range / (duration / 16);
         let current = start;
 
@@ -356,53 +383,138 @@
         }, 16);
     }
 
-    function showNotification(message) {
-        // Create notification element
-        const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-indigo-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
-        notification.textContent = message;
+    function updateVisitsByDay(visitsByDay) {
+        const container = document.querySelector('.visits-by-day-container');
+        if (!container) return;
 
-        document.body.appendChild(notification);
+        if (visitsByDay.length === 0) {
+            container.innerHTML = '<div class="text-center py-8"><p class="text-sm text-gray-500 dark:text-gray-400">No data available</p></div>';
+            return;
+        }
 
-        // Remove after 3 seconds
-        setTimeout(() => {
-            notification.classList.add('animate-slide-out');
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
+        const maxCount = Math.max(...visitsByDay.map(d => d.count));
+
+        container.innerHTML = '';
+        visitsByDay.forEach(day => {
+            const dayElement = document.createElement('div');
+            dayElement.innerHTML = `
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">${day.date_formatted}</span>
+                    <span class="text-sm font-semibold text-gray-900 dark:text-white">${parseInt(day.count).toLocaleString()}</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="bg-indigo-600 dark:bg-indigo-400 h-2 rounded-full" style="width: ${maxCount > 0 ? (day.count / maxCount) * 100 : 0}%"></div>
+                </div>
+            `;
+            container.appendChild(dayElement);
+        });
     }
+
+    function updateVisitsByWebsite(visitsByWebsite) {
+        const container = document.querySelector('.visits-by-website-container');
+        if (!container) return;
+
+        if (visitsByWebsite.length === 0) {
+            container.innerHTML = '<div class="text-center py-8"><p class="text-sm text-gray-500 dark:text-gray-400">No data available</p></div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        visitsByWebsite.forEach(website => {
+            const websiteElement = document.createElement('div');
+            websiteElement.className = 'flex items-center justify-between';
+            websiteElement.innerHTML = `
+                <div class="flex items-center flex-1 min-w-0">
+                    <div class="flex-shrink-0">
+                        <div class="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900/20 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-3 flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            <a href="/app/private/website/${website.id}" class="hover:text-indigo-600 dark:hover:text-indigo-400">
+                                ${website.name}
+                            </a>
+                        </p>
+                    </div>
+                </div>
+                <div class="ml-4 flex-shrink-0">
+                    <span class="text-sm font-semibold text-gray-900 dark:text-white">${parseInt(website.visit_count).toLocaleString()}</span>
+                </div>
+            `;
+            container.appendChild(websiteElement);
+        });
+    }
+
+    function updateTopWebsitesTable(websites) {
+        const tbody = document.querySelector('.top-websites-tbody');
+        if (!tbody) return;
+
+        if (websites.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No websites found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        websites.forEach((website, index) => {
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors';
+            row.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        ${index < 3 ?
+                            `<span class="flex items-center justify-center w-8 h-8 rounded-full ${index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' : (index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400')} font-semibold text-sm">
+                                ${index + 1}
+                            </span>` :
+                            `<span class="text-sm font-medium text-gray-500 dark:text-gray-400">${index + 1}</span>`
+                        }
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 h-10 w-10">
+                            <div class="h-10 w-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/20 flex items-center justify-center">
+                                <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white">${website.name}</div>
+                            <div class="text-sm text-gray-500 dark:text-gray-400 truncate max-w-xs">${website.url}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    <span class="font-semibold">${parseInt(website.total_visit).toLocaleString()}</span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    ${parseInt(website.logs_count).toLocaleString()}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${website.tracking_method === 'javascript' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400'}">
+                        ${website.tracking_method.charAt(0).toUpperCase() + website.tracking_method.slice(1)}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <a href="/app/private/website/${website.id}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">
+                        View
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+        }
+    });
 </script>
-
-<style>
-    @keyframes slide-in {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-
-    @keyframes slide-out {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-    }
-
-    .animate-slide-in {
-        animation: slide-in 0.3s ease-out;
-    }
-
-    .animate-slide-out {
-        animation: slide-out 0.3s ease-out;
-    }
-</style>
 @endpush
 @endsection
 

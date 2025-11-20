@@ -51,7 +51,7 @@
                     <div class="ml-5 w-0 flex-1">
                         <dl>
                             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Visits</dt>
-                            <dd class="text-lg font-semibold text-gray-900 dark:text-white">{{ number_format($website->total_visit ?? 0) }}</dd>
+                            <dd class="text-lg font-semibold text-gray-900 dark:text-white" id="website-total-visits">{{ number_format($website->total_visit ?? 0) }}</dd>
                         </dl>
                     </div>
                 </div>
@@ -71,7 +71,7 @@
                     <div class="ml-5 w-0 flex-1">
                         <dl>
                             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Logs Count</dt>
-                            <dd class="text-lg font-semibold text-gray-900 dark:text-white">{{ number_format($website->logs_count ?? 0) }}</dd>
+                            <dd class="text-lg font-semibold text-gray-900 dark:text-white" id="website-logs-count">{{ number_format($website->logs_count ?? 0) }}</dd>
                         </dl>
                     </div>
                 </div>
@@ -190,6 +190,67 @@
 
 @push('scripts')
 <script>
+    let pollingInterval;
+    const websiteId = {{ $website->id }};
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Start polling every 60 seconds
+        startPolling();
+    });
+
+    function startPolling() {
+        // Poll immediately on load
+        fetchWebsiteStats();
+
+        // Then poll every 60 seconds
+        pollingInterval = setInterval(fetchWebsiteStats, 60000);
+    }
+
+    function fetchWebsiteStats() {
+        axios.get(`/app/private/api/website/${websiteId}/stats`)
+            .then(function(response) {
+                if (response.data.success) {
+                    const data = response.data.data;
+
+                    // Update stats
+                    updateStatCard('website-total-visits', data.website.total_visit);
+                    updateStatCard('website-logs-count', data.website.logs_count);
+                }
+            })
+            .catch(function(error) {
+                console.error('Error fetching website stats:', error);
+            });
+    }
+
+    function updateStatCard(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            const currentValue = parseInt(element.textContent.replace(/,/g, '')) || 0;
+            const newValue = parseInt(value) || 0;
+
+            if (currentValue !== newValue) {
+                animateValue(element, currentValue, newValue, 500);
+            }
+        }
+    }
+
+    function animateValue(element, start, end, duration) {
+        const range = end - start;
+        if (range === 0) return;
+
+        const increment = range / (duration / 16);
+        let current = start;
+
+        const timer = setInterval(() => {
+            current += increment;
+            if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+                current = end;
+                clearInterval(timer);
+            }
+            element.textContent = Math.floor(current).toLocaleString();
+        }, 16);
+    }
+
     function copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(function() {
             // You can add a toast notification here if you have SweetAlert or similar
@@ -198,6 +259,13 @@
             console.error('Failed to copy: ', err);
         });
     }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+        }
+    });
 </script>
 @endpush
 @endsection
