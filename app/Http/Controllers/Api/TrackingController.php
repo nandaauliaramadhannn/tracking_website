@@ -9,6 +9,7 @@ use App\Models\VisitorLog;
 use App\Events\VisitorTracked;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class TrackingController extends Controller
@@ -20,8 +21,11 @@ class TrackingController extends Controller
             // 1. VALIDASI INPUT
             // ===========================
             $request->validate([
-                'website_id' => 'required',
-                'token'      => 'required',
+                'website_id' => 'required|exists:websites,id',
+                'token'      => 'required|string',
+                'referrer'   => 'nullable|url',
+                'current_url'=> 'nullable|url',
+                'user_agent' => 'nullable|string|max:500',
             ]);
 
             // ===========================
@@ -47,6 +51,17 @@ class TrackingController extends Controller
                     'status'  => false,
                     'message' => 'Token tidak valid.',
                 ], 401);
+            }
+
+            $allowedHost = $this->extractHost($website->url);
+            $originHost = $this->extractHost($request->header('Origin'));
+            $refererHost = $this->extractHost($request->header('Referer') ?? $request->referrer);
+
+            if ($allowedHost && (($originHost && !$this->hostsMatch($originHost, $allowedHost)) || ($refererHost && !$this->hostsMatch($refererHost, $allowedHost)))) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Origin tidak diizinkan untuk website ini.',
+                ], 403);
             }
 
             // ===========================
@@ -95,8 +110,28 @@ class TrackingController extends Controller
 
             return response()->json([
                 'status'  => false,
-                'message' => 'Error: '.$e->getMessage(),
+                'message' => 'Terjadi kesalahan pada server.',
             ], 500);
         }
+    }
+
+    private function extractHost(?string $url): ?string
+    {
+        if (!$url) {
+            return null;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return $host ? Str::lower($host) : null;
+    }
+
+    private function hostsMatch(string $incomingHost, string $allowedHost): bool
+    {
+        if ($incomingHost === $allowedHost) {
+            return true;
+        }
+
+        return Str::endsWith($incomingHost, '.'.$allowedHost);
     }
 }

@@ -16,6 +16,11 @@ use App\Http\Controllers\Api\DashboardApiController;
 |
 */
 
-Route::post('app/public/track', [TrackingController::class, 'store'])->name('track');
-Route::get('/dashboard/chart/per-month', [DashboardApiController::class, 'chartPerMonth'])
-    ->name('api.dashboard.chart.permonth');
+Route::post('app/public/track', [TrackingController::class, 'store'])
+    ->middleware('throttle:60,1')
+    ->name('track');
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/dashboard/chart/per-month', [DashboardApiController::class, 'chartPerMonth'])
+        ->name('api.dashboard.chart.permonth');
+});
