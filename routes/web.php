@@ -1,13 +1,14 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\ApiController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Admin\AdminController;
-use App\Http\Controllers\Admin\WebsiteController;
-use App\Http\Controllers\Admin\WebsiteDocumentationController;
-use App\Http\Controllers\Admin\AnalyticsController;
-use App\Http\Controllers\Admin\ApiController;
 use App\Http\Controllers\Admin\VisitorController;
+use App\Http\Controllers\Admin\WebsiteController;
+use App\Http\Controllers\ClientLicenseController;
+use App\Http\Controllers\Admin\AnalyticsController;
+use App\Http\Controllers\Admin\WebsiteDocumentationController;
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -22,6 +23,8 @@ use App\Http\Controllers\Admin\VisitorController;
 Route::get('/', function () {
     return view('welcome');
 });
+Route::get('/license/setup', [ClientLicenseController::class, 'showForm'])->name('license.form');
+Route::post('/license/setup', [ClientLicenseController::class, 'submit'])->name('license.submit');
 Route::get('/download/govtraffic-plugin', function () {
     $file = public_path('govtraffic.zip');
 
@@ -51,6 +54,6 @@ Route::middleware('auth')->prefix('app/private')->group(function () {
     Route::get('/api/analytics-stats', [ApiController::class, 'analyticsStats'])->name('api.analytics.stats');
     Route::get('/api/website/{id}/stats', [ApiController::class, 'websiteStats'])->name('api.website.stats');
 
-    //visitor 
+    //visitor
     Route::get('/visitor/data', [VisitorController::class, 'index'])->name('visitor.log.index');
 });
