@@ -97,9 +97,20 @@ class WebsiteController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        $validated = $request->validate([
+            'name'   => 'required|string|max:255',
+            'url'    => 'required|url',
+            'method' => 'required|in:javascript,wordpress'
+        ]);
+
         try{
             $website = Website::findOrFail($id);
-            $website->update($request->all());
+            $website->update([
+                'name' => $validated['name'],
+                'url' => $validated['url'],
+                'slug' => Str::slug($validated['name']),
+                'tracking_method' => $validated['method'],
+            ]);
             Alert::toast('Website updated successfully', 'success');
             return redirect()->route('website.index');
         } catch (\Exception $e) {
